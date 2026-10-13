@@ -82,7 +82,7 @@ Note: Innova's WiFi API numbers the fan function 1–4 (auto, night, min, max); 
 
 | Reg | Value at test | Guess |
 |---:|---:|---|
-| 218, 219 | 300, 200 | fan cut-off water temperatures, ×0.1 °C: 218 = heating minimum (30.0 °C, the factory default), 219 = cooling maximum (20.0 °C); to confirm, change the setting on the panel and watch the register |
+| 218, 219 | 300, 200 | fan cut-off water temperatures, ×0.1 °C: 218 = heating minimum (30.0 °C, the factory default), 219 = cooling maximum (20.0 °C). 218 is **writable** with FC06 and kept over a power cycle (EEPROM): set to 250 on 2026-10-13. Not yet seen to change when the fan starts |
 | 2, 7, 16 | −510, −1020, 1023 | missing probe (H4, the 4-pipe water probe, is not fitted): 16 is its 10-bit ADC at full scale (open circuit), like 13/14 for the fitted probes |
 | 3, 4 | 9–13, 11 | ? (reg 3 changes slowly) |
 | 196–277 | see dump | configuration parameters: 202/203 = 160/280 (setpoint limits 16–28 °C?), 210–215 = 400…1700 (fan speeds in rpm?), several water-temperature thresholds of 20–50 °C (218 = 30.0, 219 = 20.0, 260 = 45.0, …) |
