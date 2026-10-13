@@ -40,10 +40,7 @@ esphome:
             };
             disc.add_poll(0, temp(id(room_temperature)));
             disc.add_poll(8, temp(id(setpoint)));
-            disc.add_poll(5, temp(id(temp_reg5)));
-            disc.add_poll(6, temp(id(temp_reg6)));
-            disc.add_poll(13, temp(id(temp_reg13)));
-            disc.add_poll(14, temp(id(temp_reg14)));
+            disc.add_poll(1, temp(id(water_temperature)));
             disc.add_poll(201, [](bool ok, uint16_t raw) {
               static const char *const modes[] = {"auto", "min", "night", "max"};
               id(fan_mode).publish_state(ok ? modes[raw & 0x03] : "unknown");
@@ -359,8 +356,7 @@ binary_sensor:
     name: "Power"
     device_class: power
 
-# Fancoil values, published by the polls registered in on_boot. Registers 5/6/13/14 are probably
-# water temperatures (not confirmed yet), logged here to find out which is which.
+# Fancoil values, published by the polls registered in on_boot.
 sensor:
   - platform: template
     id: room_temperature
@@ -378,32 +374,8 @@ sensor:
     accuracy_decimals: 1
     update_interval: never
   - platform: template
-    id: temp_reg5
-    name: "Temperature Reg 5"
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    accuracy_decimals: 1
-    update_interval: never
-  - platform: template
-    id: temp_reg6
-    name: "Temperature Reg 6"
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    accuracy_decimals: 1
-    update_interval: never
-  - platform: template
-    id: temp_reg13
-    name: "Temperature Reg 13"
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    accuracy_decimals: 1
-    update_interval: never
-  - platform: template
-    id: temp_reg14
-    name: "Temperature Reg 14"
+    id: water_temperature
+    name: "Water Temperature"
     unit_of_measurement: "°C"
     device_class: temperature
     state_class: measurement

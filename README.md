@@ -7,8 +7,8 @@ ESP32 board, plus a read-only **Modbus discovery tool** for devices with an unkn
 Innova does not publish the Modbus register map for this board. Everything below was found by
 probing and is **unofficial and incomplete**.
 
-**Status:** the fancoil answers Modbus RTU (settings below). Room temperature, setpoint, fan mode,
-on/off and operating mode are mapped; water temperatures and configuration parameters are not
+**Status:** the fancoil answers Modbus RTU (settings below). Room temperature, water temperature,
+setpoint, fan mode, on/off and operating mode are mapped; the configuration parameters are not
 confirmed yet. The firmware publishes the mapped values to Home Assistant (read-only) and has the
 discovery tool plus a guarded write test.
 
@@ -64,6 +64,10 @@ RST` is the STM8 programming (SWIM) port, not a bus.
 | 0 | room temperature | ×0.1 °C (panel showed 19.9 °C, register 199) |
 | 8 | setpoint | ×0.1 °C (180 = 18.0 °C) |
 | 18 | room temperature, follows reg 0 a few seconds later (filtered?) | ×0.1 °C |
+| 1 | water temperature (coil probe) | ×0.1 °C; stayed 20.4 while the heat pump heated the DHW tank (3-way valve to the tank), read 44.3 minutes after the valve switched back, follows the heat pump supply (21.9 vs 21.8) when idle |
+| 5, 6 | room and water temperature in 0.05 °C steps | reg 5 = 2 × reg 0, reg 6 = 2 × reg 1 (e.g. 204 → 408, 443 → 887) |
+| 10, 11, 12 | raw ADC of the air and water probe; reg 12 = 8238 is the full-scale value | |
+| 13, 14 | air and water probe as 10-bit ADC (0–1023), = reg 10/11 × 1023 / reg 12 | NTC: goes down as the temperature goes up (water 20.4 °C → 414, 44.3 °C → 225) |
 | 231 | setpoint (copy of reg 8) | ×0.1 °C |
 | 201 | fan mode and on/off, bit field | bits 0–1: 0 auto, 1 min, 2 night, 3 max; bit 7: 1 = off |
 | 700, 701, 707 | bits 0, 1 and 7 of reg 201 as separate 0/1 registers | |
@@ -78,13 +82,8 @@ Note: Innova's WiFi API numbers the fan function 1–4 (auto, night, min, max); 
 
 | Reg | Value at test | Guess |
 |---:|---:|---|
-| 1 | 204 | another air temperature? |
-| 2, 7, 16 | −510, −1020, 1023 | missing probe (H4, the 4-pipe water probe, is not fitted); 16 = 10-bit ADC at full scale |
+| 2, 7, 16 | −510, −1020, 1023 | missing probe (H4, the 4-pipe water probe, is not fitted): 16 is its 10-bit ADC at full scale (open circuit), like 13/14 for the fitted probes |
 | 3, 4 | 9–13, 11 | ? (reg 3 changes slowly) |
-| 5, 6 | ~400 | water temperatures, ×0.1 °C? |
-| 10, 11 | ~3370, 3330 | raw values; reg 10 moves together with reg 13 |
-| 12 | 0x202E | bit field? |
-| 13, 14 | ~415 | water temperatures, ×0.1 °C? |
 | 196–277 | see dump | configuration parameters: 202/203 = 160/280 (setpoint limits 16–28 °C?), 210–215 = 400…1700 (fan speeds in rpm?), several water-temperature thresholds of 20–50 °C (218 = 30.0, 219 = 20.0, 260 = 45.0, …) |
 
 <details>
@@ -288,7 +287,7 @@ Polled every 30 s, one register per request:
 | Fan Mode | 201 bits 0–1 | auto / min / night / max |
 | Power | 201 bit 7 | on / off |
 | Operating Mode | 233 | heating / cooling |
-| Temperature Reg 5 / 6 / 13 / 14 | 5, 6, 13, 14 | **unconfirmed**: logged to find out which is the water temperature; reg 6 has read 88.7, so it may not be a temperature at all |
+| Water Temperature | 1 | °C (coil probe; confirm once more during a space-heating run) |
 | Status Register 104 | 104 | raw status bits (diagnostic) |
 
 Polling pauses while a discovery job or a write runs.
@@ -339,8 +338,9 @@ traffic, which would mean another master is on the bus.
 ## Roadmap
 
 - [x] Map room temperature, setpoint, fan mode, on/off and operating mode.
-- [ ] Confirm the water temperatures (regs 5/6, 13/14) and the parameter block 196–277 by logging
-      them against the heat pump's supply temperature; find fan speed / valve state, if exposed.
+- [x] Find the water temperature (reg 1; regs 5/6 and 13/14 are scaled and raw copies).
+- [ ] Confirm reg 1 during a space-heating run, and map the parameter block 196–277; find fan
+      speed / valve state, if exposed.
 - [ ] Measure the "+" terminal and the 10V-DC pads; maybe power the LilyGo from the fancoil.
 - [ ] Replace the discovery tool with ESPHome's `modbus_controller` (RTU, 9600 8N1, slave 1), one
       register per read.
