@@ -62,14 +62,14 @@ RST` is the STM8 programming (SWIM) port, not a bus.
 | Reg | Meaning | Values |
 |---:|---|---|
 | 0 | room temperature | ×0.1 °C (panel showed 19.9 °C, register 199) |
-| 8 | setpoint | ×0.1 °C (180 = 18.0 °C) |
+| 8 | setpoint, read-only (FC06 refused: illegal data address) | ×0.1 °C (180 = 18.0 °C) |
 | 18 | room temperature, follows reg 0 a few seconds later (filtered?) | ×0.1 °C |
 | 1 | water temperature (coil probe) | ×0.1 °C; stayed 20.4 while the heat pump heated the DHW tank (3-way valve to the tank), read 44.3 minutes after the valve switched back, follows the heat pump supply (21.9 vs 21.8) when idle |
 | 5, 6 | room and water temperature in 0.05 °C steps | reg 5 = 2 × reg 0, reg 6 = 2 × reg 1 (e.g. 204 → 408, 443 → 887) |
 | 10, 11, 12 | raw ADC of the air and water probe; reg 12 = 8238 is the full-scale value | |
 | 13, 14 | air and water probe as 10-bit ADC (0–1023), = reg 10/11 × 1023 / reg 12 | NTC: goes down as the temperature goes up (water 20.4 °C → 414, 44.3 °C → 225) |
-| 231 | setpoint (copy of reg 8) | ×0.1 °C |
-| 201 | fan mode and on/off, bit field | bits 0–1: 0 auto, 1 min, 2 night, 3 max; bit 7: 1 = off |
+| 231 | setpoint, **writable** with FC06: the panel shows the new value at once, reg 8 follows | ×0.1 °C (tested 180 → 185 → 180) |
+| 201 | fan mode and on/off, bit field, **writable** with FC06 (panel follows at once) | bits 0–1: 0 auto, 1 min, 2 night, 3 max; bit 7: 1 = off (tested 0 → 1 → 0 → 128 → 0) |
 | 700, 701, 707 | bits 0, 1 and 7 of reg 201 as separate 0/1 registers | |
 | 233 | operating mode | 3 heating, 5 cooling |
 | 104 | status bit field | 0x0010 on, 0x0800 off; bits 0 and 9 also set in cooling (with warm water) |
@@ -353,7 +353,9 @@ traffic, which would mean another master is on the bus.
       mode, water-temperature candidates.
 - [ ] Check whether the fancoil's minimum-water-temperature cutoff stops the fan when a heat pump
       runs a low supply temperature (24–30 °C).
-- [ ] Write test with the panel at hand: setpoint (reg 8, else 231), fan mode and off (reg 201).
+- [x] Write the setpoint: reg 231 works, reg 8 is read-only.
+- [x] Write fan mode and on/off (reg 201).
+- [ ] Write the heating minimum water temperature (reg 218) and check the fan starts on 25 °C water.
 - [ ] Optional: a DS18B20 on the water inlet pipe (free pins IO25/32/33, 4.7 kΩ pull-up to 3.3 V)
       as an independent water-temperature reference.
 - [ ] Later, maybe: control (e.g. low fan speed while the heat pump runs). Only after the
