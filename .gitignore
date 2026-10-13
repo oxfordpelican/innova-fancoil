@@ -1,0 +1,9 @@
+# ESPHome build output (contains the compiled-in secrets)
+/.esphome/
+# Credentials; copy secrets.yaml.example to secrets.yaml
+/secrets.yaml
+
+# Personal, kept local: original photos (GPS in EXIF) and private correspondence.
+# Metadata-free copies of the useful photos are in docs/img/.
+/photos/
+/mail-to-innova.md
