@@ -7,8 +7,7 @@ ESP32 board, plus a read-only **Modbus discovery tool** for devices with an unkn
 Innova does not publish the Modbus register map for this board. Everything below was found by
 probing and is **unofficial and incomplete**.
 
-**Status:** the fancoil answers Modbus requests (settings below) and a first register dump is
-done. The registers are not mapped yet, so the firmware has no fancoil sensors yet, only the
+**Status:** the fancoil answers Modbus RTU (settings below) and a first register dump is done. The registers are not mapped yet, so the firmware has no fancoil sensors yet, only the
 discovery tool.
 
 > Not affiliated with or endorsed by Innova. The fancoil has mains voltage inside: switch it off at
@@ -21,7 +20,8 @@ discovery tool.
 | | |
 |---|---|
 | Port | 4-pin green terminal **"+ A B −"** on the control board (unused from the factory) |
-| Protocol | **Modbus ASCII** (not RTU), **9600 baud, 7E1** |
+| Mode, jumper on **RTU** | **Modbus RTU, 9600 baud, 8N1** (recommended; ESPHome `modbus_controller` speaks RTU) |
+| Mode, jumper on **ASCII** (factory) | **Modbus ASCII, 9600 baud, 7E1** |
 | Slave address | **1** |
 | Functions | 03 and 04 both answer, with identical values |
 | Polarity | The fancoil's **B** idles high (+2.3 V to −), **A** low (+0.9 V). Innova uses the "B = D+" convention, so wire fancoil **B → transceiver A** and fancoil **A → transceiver B** for a Maxim-style transceiver like the one on the T-CAN485 |
@@ -29,8 +29,10 @@ discovery tool.
 | + | Supply voltage, not measured yet; not connected (the LilyGo runs on USB-C) |
 
 The board's **ASCII / RTU jumper** (3-pin, next to the DIP switches) selects the Modbus framing. It
-was in the ASCII position from the factory. In that position the board ignores all RTU frames, so an
-RTU-only scan finds nothing. The transceiver on the fancoil board is an ST485.
+comes in the **ASCII** position, where the board ignores all RTU frames, so an RTU-only scan finds
+nothing. Moving the cap to the two pins on the "RTU" side (fancoil switched off at the breaker)
+gives Modbus RTU at 9600 8N1, which ESPHome's `modbus_controller` speaks. Register values are the
+same in both modes. The transceiver on the fancoil board is an ST485.
 
 ![Wiring diagram on the cover](docs/img/wiring-label.jpg)
 
@@ -44,16 +46,16 @@ RST` is the STM8 programming (SWIM) port, not a bus.
 
 ### Registers (first dump, unconfirmed)
 
-Dump of registers 0–99 with FC03 and FC04 (identical results). Registers **0–19, 21 and 22** answer;
+Dump of registers 0–99 with FC03 and FC04 (identical results, same over ASCII and RTU). Registers **0–19, 21 and 22** answer;
 20 and 23–99 return exception 2 (illegal data address). At the time of the dump, the panel showed
 setpoint 18.0 °C and heating was on.
 
 | Reg | Raw | ×0.1 | Guess |
 |---:|---:|---:|---|
-| 0 | 199 | 19.9 | room / air temperature (AIR probe) |
+| 0 | 199 | 19.9 | **room temperature** (panel showed 19.9 °C) |
 | 1 | 204 | 20.4 | ? (another air temperature?) |
 | 2 | −510 | −51.0 | missing probe (H4, the 4-pipe water probe, is not fitted) |
-| 3 | 13 | | ? |
+| 3 | 13, later 9 | | ? (changes) |
 | 4 | 11 | | ? |
 | 5 | 398 | 39.8 | water temperature? |
 | 6 | 408 | 40.8 | water temperature? |
@@ -68,7 +70,7 @@ setpoint 18.0 °C and heating was on.
 | 15 | 0 | | |
 | 16 | 1023 (0x3FF) | | 10-bit ADC at full scale: open probe input (H4)? |
 | 17 | 0 | | |
-| 18 | 199 | 19.9 | same as reg 0 |
+| 18 | 199 | 19.9 | room temperature again (copy, or filtered/display value?) |
 | 19 | 0 | | |
 | 21 | 0 | | |
 | 22 | 0 | | |
@@ -142,8 +144,7 @@ traffic, which would mean another master is on the bus.
 - [ ] Map registers 0–22 with Watch Registers (setpoint, fan function, mode, on/off, fan speed,
       valve, alarms); try other ranges (100, 1000, …) and FC01/02.
 - [ ] Measure the "+" terminal and the 10V-DC pads; maybe power the LilyGo from the fancoil.
-- [ ] Replace the discovery tool with ESPHome's `modbus_controller`. It speaks RTU only, so either
-      move the jumper to RTU (and find its serial settings) or keep a small ASCII client.
+- [ ] Replace the discovery tool with ESPHome's `modbus_controller` (RTU, 9600 8N1, slave 1).
 - [ ] Read-only sensors in Home Assistant: room and water temperature, setpoint, fan state. Then
       check whether the fancoil's minimum-water-temperature cutoff stops the fan when a heat pump
       runs a low supply temperature (24–30 °C).
