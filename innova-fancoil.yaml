@@ -41,6 +41,8 @@ esphome:
             disc.add_poll(0, temp(id(room_temperature)));
             disc.add_poll(8, temp(id(setpoint)));
             disc.add_poll(1, temp(id(water_temperature)));
+            disc.add_poll(218, temp(id(min_water_heating)));
+            disc.add_poll(219, temp(id(max_water_cooling)));
             disc.add_poll(201, [](bool ok, uint16_t raw) {
               static const char *const modes[] = {"auto", "min", "night", "max"};
               id(fan_mode).publish_state(ok ? modes[raw & 0x03] : "unknown");
@@ -51,7 +53,7 @@ esphome:
                                                : "unknown (" + to_string(raw) + ")");
             });
             disc.add_poll(104, [](bool ok, uint16_t raw) { id(status_104).publish_state(ok ? raw : NAN); });
-        # Write allowlist: only mapped registers whose effect can be undone on the panel. Writes also
+        # Write allowlist: only mapped registers, in ranges that are safe to set back. Writes also
         # need the "Writes Enabled" switch, which is off after every boot.
         - lambda: |-
             disc.write_allowed = [](uint16_t reg, uint16_t value) {
@@ -61,6 +63,10 @@ esphome:
                   return value >= 160 && value <= 280;  // setpoint 16.0-28.0 degC
                 case 201:
                   return value <= 3 || value == 128;  // fan mode auto/min/night/max, or off
+                case 218:
+                  return value >= 200 && value <= 350;  // probable heating minimum water temp, 20.0-35.0 degC (default 30.0)
+                case 219:
+                  return value >= 120 && value <= 250;  // probable cooling maximum water temp, 12.0-25.0 degC (default 20.0)
                 default:
                   return false;
               }
@@ -379,6 +385,23 @@ sensor:
     unit_of_measurement: "°C"
     device_class: temperature
     state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+  # Probable fan cut-off thresholds (parameters; 30.0 / 20.0 match the usual factory defaults).
+  - platform: template
+    id: min_water_heating
+    name: "Min Water Temp Heating"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: diagnostic
+    accuracy_decimals: 1
+    update_interval: never
+  - platform: template
+    id: max_water_cooling
+    name: "Max Water Temp Cooling"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: diagnostic
     accuracy_decimals: 1
     update_interval: never
   - platform: template

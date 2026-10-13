@@ -82,6 +82,7 @@ Note: Innova's WiFi API numbers the fan function 1–4 (auto, night, min, max); 
 
 | Reg | Value at test | Guess |
 |---:|---:|---|
+| 218, 219 | 300, 200 | fan cut-off water temperatures, ×0.1 °C: 218 = heating minimum (30.0 °C, the factory default), 219 = cooling maximum (20.0 °C); to confirm, change the setting on the panel and watch the register |
 | 2, 7, 16 | −510, −1020, 1023 | missing probe (H4, the 4-pipe water probe, is not fitted): 16 is its 10-bit ADC at full scale (open circuit), like 13/14 for the fitted probes |
 | 3, 4 | 9–13, 11 | ? (reg 3 changes slowly) |
 | 196–277 | see dump | configuration parameters: 202/203 = 160/280 (setpoint limits 16–28 °C?), 210–215 = 400…1700 (fan speeds in rpm?), several water-temperature thresholds of 20–50 °C (218 = 30.0, 219 = 20.0, 260 = 45.0, …) |
@@ -288,6 +289,8 @@ Polled every 30 s, one register per request:
 | Power | 201 bit 7 | on / off |
 | Operating Mode | 233 | heating / cooling |
 | Water Temperature | 1 | °C (coil probe; confirm once more during a space-heating run) |
+| Min Water Temp Heating | 218 | °C (probable; diagnostic) |
+| Max Water Temp Cooling | 219 | °C (probable; diagnostic) |
 | Status Register 104 | 104 | raw status bits (diagnostic) |
 
 Polling pauses while a discovery job or a write runs.
@@ -300,11 +303,13 @@ result shows in **Discovery Status** and the log. A write is only sent when:
 
 - the **Writes Enabled** switch is on (it is off after every boot), and
 - the register and value are in the allowlist in `innova-fancoil.yaml`: setpoint 8 or 231 with
-  160–280 (16.0–28.0 °C), or fan mode/on-off 201 with 0–3 or 128 (off).
+  160–280 (16.0–28.0 °C), fan mode/on-off 201 with 0–3 or 128 (off), heating minimum water
+  temperature 218 with 200–350 (20.0–35.0 °C, default 300), or cooling maximum water temperature
+  219 with 120–250 (12.0–25.0 °C, default 200).
 
-Everything else is refused before anything goes on the bus. Only change what you can set back on
-the panel, and write on change only, never periodically: the fancoil probably stores these in
-EEPROM, which wears out.
+Everything else is refused before anything goes on the bus. 218 and 219 cannot be set on the
+panel: note the old value (300 / 200) and write it back over Modbus to undo. Write on change only,
+never periodically: the fancoil probably stores these in EEPROM, which wears out.
 
 ## Discovery tool
 
