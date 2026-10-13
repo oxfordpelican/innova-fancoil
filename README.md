@@ -1,16 +1,23 @@
 # innova-fancoil
 
-ESPHome firmware for reading an **Innova AirLeaf SL** fancoil (tested on an SL600, control board
-N540022C) over its RS485 port with a [LilyGo T-CAN485](https://github.com/Xinyuan-LilyGO/T-CAN485)
-ESP32 board, plus a read-only **Modbus discovery tool** for devices with an unknown register map.
+ESPHome firmware for reading, and carefully writing, an **Innova AirLeaf SL** fancoil (tested on
+an SL600, control board N540022C) over its RS485 port with a
+[LilyGo T-CAN485](https://github.com/Xinyuan-LilyGO/T-CAN485) ESP32 board, plus a **Modbus
+discovery tool** for devices with an unknown register map.
 
 Innova does not publish the Modbus register map for this board. Everything below was found by
 probing and is **unofficial and incomplete**.
 
-**Status:** the fancoil answers Modbus RTU (settings below). Room temperature, water temperature,
-setpoint, fan mode, on/off and operating mode are mapped; the configuration parameters are not
-confirmed yet. The firmware publishes the mapped values to Home Assistant (read-only) and has the
-discovery tool plus a guarded write test.
+**Status:** the fancoil answers Modbus RTU (settings below).
+
+- **Mapped and published to Home Assistant:** room temperature, water temperature, setpoint, fan
+  mode, on/off, operating mode and the water cut-off thresholds.
+- **Confirmed writable** (FC06, tested with the panel): setpoint (reg 231), fan mode and on/off
+  (reg 201), and the heating minimum water temperature (reg 218; kept over a power cycle, its effect
+  on the fan is not tested yet).
+- **Writes** go only through a guarded write test (switch plus allowlist); there are no regular
+  Home Assistant controls yet.
+- The rest of the configuration parameters (196–277) are not mapped yet.
 
 > Not affiliated with or endorsed by Innova. The fancoil has mains voltage inside: switch it off at
 > the breaker before opening it. Use at your own risk.
@@ -381,8 +388,8 @@ traffic, which would mean another master is on the bus.
 - [ ] Measure the "+" terminal and the 10V-DC pads; maybe power the LilyGo from the fancoil.
 - [ ] Replace the discovery tool with ESPHome's `modbus_controller` (RTU, 9600 8N1, slave 1), one
       register per read.
-- [x] Read-only sensors in Home Assistant: room temperature, setpoint, fan mode, power, operating
-      mode, water-temperature candidates.
+- [x] Read-only sensors in Home Assistant: room temperature, water temperature, setpoint, fan mode,
+      power, operating mode, water cut-off thresholds.
 - [ ] Check whether the fancoil's minimum-water-temperature cutoff stops the fan when a heat pump
       runs a low supply temperature (24–30 °C).
 - [x] Write the setpoint: reg 231 works, reg 8 is read-only.
@@ -390,8 +397,8 @@ traffic, which would mean another master is on the bus.
 - [ ] Write the heating minimum water temperature (reg 218) and check the fan starts on 25 °C water.
 - [ ] Optional: a DS18B20 on the water inlet pipe (free pins IO25/32/33, 4.7 kΩ pull-up to 3.3 V)
       as an independent water-temperature reference.
-- [ ] Later, maybe: control (e.g. low fan speed while the heat pump runs). Only after the
-      register map is known.
+- [ ] Home Assistant controls for setpoint (231), fan mode and on/off (201) instead of the write
+      test; then control, e.g. a low fan speed while the heat pump runs.
 
 ## Rules
 
