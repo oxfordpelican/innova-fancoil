@@ -11,6 +11,8 @@
 //   watch       repeat the dump and log only values that change
 // Between jobs it polls the registers added with add_poll() (for Home Assistant sensors), one register per
 // request, and otherwise listens and logs any unsolicited traffic (is something else a master on this bus?).
+// A dump or watch that reads a polled register (FC03) also feeds its callback, so a watch that covers the
+// polled registers keeps the sensors updating.
 
 #include <algorithm>
 #include <cstdio>
@@ -772,6 +774,9 @@ class Discovery {
 
   void record_(uint8_t fc, uint16_t reg, uint16_t v) {
     this->readable_++;
+    if (fc == 3)
+      for (const auto &p : this->polls_)
+        if (p.reg == reg) p.cb(true, v);
     uint32_t key = (uint32_t) fc << 16 | reg;
     auto it = this->values_.find(key);
     if (it == this->values_.end()) {

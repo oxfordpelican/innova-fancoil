@@ -332,7 +332,8 @@ Polled every 30 s, one register per request:
 | Max Water Temp Cooling | 219 | °C (probable; diagnostic) |
 | Status Register 104 | 104 | raw status bits (diagnostic) |
 
-Polling pauses while a discovery job or a write runs.
+Polling pauses while a discovery job or a write runs; a dump or watch that covers the polled registers
+keeps the sensors updating with its own reads.
 
 ### Write test (guarded)
 
