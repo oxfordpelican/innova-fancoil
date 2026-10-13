@@ -7,8 +7,10 @@ ESP32 board, plus a read-only **Modbus discovery tool** for devices with an unkn
 Innova does not publish the Modbus register map for this board. Everything below was found by
 probing and is **unofficial and incomplete**.
 
-**Status:** the fancoil answers Modbus RTU (settings below) and a first register dump is done. The registers are not mapped yet, so the firmware has no fancoil sensors yet, only the
-discovery tool.
+**Status:** the fancoil answers Modbus RTU (settings below). Room temperature, setpoint, fan mode,
+on/off and operating mode are mapped; water temperatures and configuration parameters are not
+confirmed yet. The firmware publishes the mapped values to Home Assistant (read-only) and has the
+discovery tool plus a guarded write test.
 
 > Not affiliated with or endorsed by Innova. The fancoil has mains voltage inside: switch it off at
 > the breaker before opening it. Use at your own risk.
@@ -44,36 +46,200 @@ DIP switches as found: A off, B off, C on, D off (meaning unknown, see the insta
 "Set-Up of Auxiliary Dip-Switch Functions"). The 4-pin **ZOT** header next to the pads `+5V SW GND
 RST` is the STM8 programming (SWIM) port, not a bus.
 
-### Registers (first dump, unconfirmed)
+### Registers
 
-Dump of registers 0–99 with FC03 and FC04 (identical results, same over ASCII and RTU). Registers **0–19, 21 and 22** answer;
-20 and 23–99 return exception 2 (illegal data address). At the time of the dump, the panel showed
-setpoint 18.0 °C and heating was on.
+- **One register table.** FC03 and FC04 return the same 146 registers with the same values, over
+  ASCII and RTU. FC01/02 (coils, discrete inputs) return exception 1, illegal function.
+- **146 registers answer** in 0–1999: 0–19, 21–22, 101–111, 196–215, 218–236, 238–250, 255–277,
+  600–603, 700–702, 704–705, 707, 800–802, 807–808, 998–999, 1050–1059, 1061, 1100–1107, 1150–1151.
+  The rest return exception 2, illegal data address.
+- **Read one register per request.** Multi-register reads are refused at times with exception 3,
+  illegal data value, even for ranges that answered as a block before.
+- Values are signed 16-bit; temperatures are ×0.1 °C.
 
-| Reg | Raw | ×0.1 | Guess |
-|---:|---:|---:|---|
-| 0 | 199 | 19.9 | **room temperature** (panel showed 19.9 °C) |
-| 1 | 204 | 20.4 | ? (another air temperature?) |
-| 2 | −510 | −51.0 | missing probe (H4, the 4-pipe water probe, is not fitted) |
-| 3 | 13, later 9 | | ? (changes) |
-| 4 | 11 | | ? |
-| 5 | 398 | 39.8 | water temperature? |
-| 6 | 408 | 40.8 | water temperature? |
-| 7 | −1020 | | missing-probe marker? |
-| 8 | 180 | 18.0 | **setpoint** (matches the panel) |
-| 9 | 0 | | |
-| 10 | 3374 | | ? |
-| 11 | 3333 | | ? |
-| 12 | 8238 (0x202E) | | bit field? |
-| 13 | 419 | 41.9 | water temperature? |
-| 14 | 414 | 41.4 | water temperature? |
-| 15 | 0 | | |
-| 16 | 1023 (0x3FF) | | 10-bit ADC at full scale: open probe input (H4)? |
-| 17 | 0 | | |
-| 18 | 199 | 19.9 | room temperature again (copy, or filtered/display value?) |
-| 19 | 0 | | |
-| 21 | 0 | | |
-| 22 | 0 | | |
+**Confirmed** with panel changes (2026-10-13):
+
+| Reg | Meaning | Values |
+|---:|---|---|
+| 0 | room temperature | ×0.1 °C (panel showed 19.9 °C, register 199) |
+| 8 | setpoint | ×0.1 °C (180 = 18.0 °C) |
+| 18 | room temperature, follows reg 0 a few seconds later (filtered?) | ×0.1 °C |
+| 231 | setpoint (copy of reg 8) | ×0.1 °C |
+| 201 | fan mode and on/off, bit field | bits 0–1: 0 auto, 1 min, 2 night, 3 max; bit 7: 1 = off |
+| 700, 701, 707 | bits 0, 1 and 7 of reg 201 as separate 0/1 registers | |
+| 233 | operating mode | 3 heating, 5 cooling |
+| 104 | status bit field | 0x0010 on, 0x0800 off; bits 0 and 9 also set in cooling (with warm water) |
+| 9, 21, 105 | status, only non-zero in cooling (with warm water); reg 9 counted 1 → 5 → 0 | |
+
+Note: Innova's WiFi API numbers the fan function 1–4 (auto, night, min, max); Modbus reg 201 uses
+0–3 in a different order.
+
+**Guesses** (not confirmed):
+
+| Reg | Value at test | Guess |
+|---:|---:|---|
+| 1 | 204 | another air temperature? |
+| 2, 7, 16 | −510, −1020, 1023 | missing probe (H4, the 4-pipe water probe, is not fitted); 16 = 10-bit ADC at full scale |
+| 3, 4 | 9–13, 11 | ? (reg 3 changes slowly) |
+| 5, 6 | ~400 | water temperatures, ×0.1 °C? |
+| 10, 11 | ~3370, 3330 | raw values; reg 10 moves together with reg 13 |
+| 12 | 0x202E | bit field? |
+| 13, 14 | ~415 | water temperatures, ×0.1 °C? |
+| 196–277 | see dump | configuration parameters: 202/203 = 160/280 (setpoint limits 16–28 °C?), 210–215 = 400…1700 (fan speeds in rpm?), several water-temperature thresholds of 20–50 °C (218 = 30.0, 219 = 20.0, 260 = 45.0, …) |
+
+<details>
+<summary>Full FC03 dump of all 146 registers (register, signed value, hex), heating, fan on min, setpoint 18.5 °C</summary>
+
+```
+    0    200  0x00C8
+    1    204  0x00CC
+    2   -510  0xFE02
+    3      9  0x0009
+    4     11  0x000B
+    5    400  0x0190
+    6    408  0x0198
+    7  -1020  0xFC04
+    8    185  0x00B9
+    9      0  0x0000
+   10   3366  0x0D26
+   11   3333  0x0D05
+   12   8238  0x202E
+   13    418  0x01A2
+   14    414  0x019E
+   15      0  0x0000
+   16   1023  0x03FF
+   17      0  0x0000
+   18    200  0x00C8
+   19      0  0x0000
+   21      0  0x0000
+   22      0  0x0000
+  101      0  0x0000
+  102      0  0x0000
+  103      0  0x0000
+  104     16  0x0010
+  105      0  0x0000
+  106      0  0x0000
+  107      0  0x0000
+  108      0  0x0000
+  109      0  0x0000
+  110      0  0x0000
+  111      0  0x0000
+  196      0  0x0000
+  197      0  0x0000
+  198     35  0x0023
+  199   1085  0x043D
+  200      1  0x0001
+  201      1  0x0001
+  202    160  0x00A0
+  203    280  0x0118
+  204     -5  0xFFFB
+  205      2  0x0002
+  206     20  0x0014
+  207    -20  0xFFEC
+  208    300  0x012C
+  209      0  0x0000
+  210    400  0x0190
+  211    550  0x0226
+  212    680  0x02A8
+  213   1100  0x044C
+  214   1500  0x05DC
+  215   1700  0x06A4
+  218    300  0x012C
+  219    200  0x00C8
+  220     15  0x000F
+  221      0  0x0000
+  222      0  0x0000
+  223      0  0x0000
+  224      0  0x0000
+  225    -92  0xFFA4
+  226     97  0x0061
+  227      1  0x0001
+  228    700  0x02BC
+  229    350  0x015E
+  230    720  0x02D0
+  231    185  0x00B9
+  232     50  0x0032
+  233      3  0x0003
+  234   1220  0x04C4
+  235      4  0x0004
+  236      1  0x0001
+  238     -2  0xFFFE
+  239     -5  0xFFFB
+  240     -2  0xFFFE
+  241      5  0x0005
+  242      0  0x0000
+  243      0  0x0000
+  244      0  0x0000
+  245    200  0x00C8
+  246    240  0x00F0
+  247      0  0x0000
+  248     14  0x000E
+  249     30  0x001E
+  250      0  0x0000
+  255      1  0x0001
+  256      0  0x0000
+  257     -2  0xFFFE
+  258     -5  0xFFFB
+  259    200  0x00C8
+  260    450  0x01C2
+  261     20  0x0014
+  262    -20  0xFFEC
+  263     25  0x0019
+  264     30  0x001E
+  265     40  0x0028
+  266     65  0x0041
+  267     90  0x005A
+  268    100  0x0064
+  269     55  0x0037
+  270     70  0x0046
+  271      0  0x0000
+  272    300  0x012C
+  273      0  0x0000
+  274      0  0x0000
+  275    500  0x01F4
+  276     30  0x001E
+  277      5  0x0005
+  600      0  0x0000
+  601      1  0x0001
+  602      1  0x0001
+  603      1  0x0001
+  700      1  0x0001
+  701      0  0x0000
+  702      0  0x0000
+  704      0  0x0000
+  705      0  0x0000
+  707      0  0x0000
+  800      0  0x0000
+  801      0  0x0000
+  802      0  0x0000
+  807      0  0x0000
+  808      0  0x0000
+  998      0  0x0000
+  999      0  0x0000
+ 1050      2  0x0002
+ 1051      0  0x0000
+ 1052     50  0x0032
+ 1053      0  0x0000
+ 1054      0  0x0000
+ 1055      1  0x0001
+ 1056      0  0x0000
+ 1057      0  0x0000
+ 1058      0  0x0000
+ 1059      0  0x0000
+ 1061      0  0x0000
+ 1100      0  0x0000
+ 1101      0  0x0000
+ 1102      0  0x0000
+ 1103      0  0x0000
+ 1104      0  0x0000
+ 1105      0  0x0000
+ 1106      0  0x0000
+ 1107      0  0x0000
+ 1150      0  0x0000
+ 1151      0  0x0000
+```
+
+</details>
 
 Encodings from Innova's WiFi module API (the [`innova-controls`](https://pypi.org/project/innova-controls/)
 Python package, which talks HTTP to the WiFi module, not Modbus). These show what the board knows
@@ -111,10 +277,41 @@ docker run --rm -v "$PWD":/config esphome/esphome run innova-fancoil.yaml --devi
 Then adopt the device in Home Assistant (ESPHome integration, API key from `secrets.yaml`). Its web
 UI with the live log is at `http://innova-fancoil.local`.
 
+## Home Assistant entities
+
+Polled every 30 s, one register per request:
+
+| Entity | Register | Notes |
+|---|---|---|
+| Room Temperature | 0 | °C |
+| Setpoint | 8 | °C |
+| Fan Mode | 201 bits 0–1 | auto / min / night / max |
+| Power | 201 bit 7 | on / off |
+| Operating Mode | 233 | heating / cooling |
+| Temperature Reg 5 / 6 / 13 / 14 | 5, 6, 13, 14 | **unconfirmed**: logged to find out which is the water temperature; reg 6 has read 88.7, so it may not be a temperature at all |
+| Status Register 104 | 104 | raw status bits (diagnostic) |
+
+Polling pauses while a discovery job or a write runs.
+
+### Write test (guarded)
+
+For testing which registers accept writes: **Write Register**, **Write Value** and the **Write
+Register Value** button send one FC06 (write single register) and read the register back; the
+result shows in **Discovery Status** and the log. A write is only sent when:
+
+- the **Writes Enabled** switch is on (it is off after every boot), and
+- the register and value are in the allowlist in `innova-fancoil.yaml`: setpoint 8 or 231 with
+  160–280 (16.0–28.0 °C), or fan mode/on-off 201 with 0–3 or 128 (off).
+
+Everything else is refused before anything goes on the bus. Only change what you can set back on
+the panel, and write on change only, never periodically: the fancoil probably stores these in
+EEPROM, which wears out.
+
 ## Discovery tool
 
 `modbus_discovery.h` is a small non-blocking Modbus master for finding an unknown device. It speaks
-**RTU and ASCII** and **only sends read functions 01–04, never writes**. Results go to the ESPHome
+**RTU and ASCII**; discovery only sends read functions 01–04 (the guarded write test above is the
+one exception). Results go to the ESPHome
 log; the **Discovery Status** sensor shows progress. All settings are Home Assistant config
 entities and survive a reboot.
 
@@ -128,8 +325,8 @@ entities and survive a reboot.
 | Reply Timeout | Wait per request beyond the frame time (150 ms) |
 | **Scan Addresses** | FC03 to each address at the current settings |
 | **Scan All Serial Settings** | Same, through 2400–115200 baud × RTU 8N1/8E1/8O1 and ASCII 7E1/8N1/7N2/7O1 (49 combinations, likely ones first); stops at the first that answers and fills in the settings. About 5 min with 32 addresses, 40 min with 247 |
-| **Dump Registers** | Reads the range in blocks of 16 (failed blocks retried per register), logs every readable value with signed and ×0.1 columns |
-| **Watch Registers** | Repeats the dump every 2 s and logs only `CHANGE` lines |
+| **Dump Registers** | Reads the range in blocks of 16 (failed blocks retried per register), logs every readable value with signed and ×0.1 columns, and counts exception codes |
+| **Watch Registers** | Does one full dump, then re-reads only the registers that answered (split into single reads where a slave refuses multi-register reads) every 2 s and logs only `CHANGE` lines |
 | Stop Discovery | Stops any of the above |
 
 A slave counts as found on a normal reply *and* on an exception reply. `invalid reply` warnings mean
@@ -141,13 +338,17 @@ traffic, which would mean another master is on the bus.
 
 ## Roadmap
 
-- [ ] Map registers 0–22 with Watch Registers (setpoint, fan function, mode, on/off, fan speed,
-      valve, alarms); try other ranges (100, 1000, …) and FC01/02.
+- [x] Map room temperature, setpoint, fan mode, on/off and operating mode.
+- [ ] Confirm the water temperatures (regs 5/6, 13/14) and the parameter block 196–277 by logging
+      them against the heat pump's supply temperature; find fan speed / valve state, if exposed.
 - [ ] Measure the "+" terminal and the 10V-DC pads; maybe power the LilyGo from the fancoil.
-- [ ] Replace the discovery tool with ESPHome's `modbus_controller` (RTU, 9600 8N1, slave 1).
-- [ ] Read-only sensors in Home Assistant: room and water temperature, setpoint, fan state. Then
-      check whether the fancoil's minimum-water-temperature cutoff stops the fan when a heat pump
+- [ ] Replace the discovery tool with ESPHome's `modbus_controller` (RTU, 9600 8N1, slave 1), one
+      register per read.
+- [x] Read-only sensors in Home Assistant: room temperature, setpoint, fan mode, power, operating
+      mode, water-temperature candidates.
+- [ ] Check whether the fancoil's minimum-water-temperature cutoff stops the fan when a heat pump
       runs a low supply temperature (24–30 °C).
+- [ ] Write test with the panel at hand: setpoint (reg 8, else 231), fan mode and off (reg 201).
 - [ ] Optional: a DS18B20 on the water inlet pipe (free pins IO25/32/33, 4.7 kΩ pull-up to 3.3 V)
       as an independent water-temperature reference.
 - [ ] Later, maybe: control (e.g. low fan speed while the heat pump runs). Only after the
@@ -155,8 +356,8 @@ traffic, which would mean another master is on the bus.
 
 ## Rules
 
-- **Read-only first:** only functions 01–04 until the register map is known. No writes (05/06/15/16)
-  to unknown registers.
+- **Read-only first:** discovery uses only functions 01–04. Writes only through the guarded write
+  test (FC06, allowlist of mapped registers, Writes Enabled switch). Never write unknown registers.
 - The fancoil must keep working on its own; its own thermostat stays the fallback. Any control
   logic runs on the ESP32, not in Home Assistant.
 

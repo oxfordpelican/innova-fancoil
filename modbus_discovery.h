@@ -1,6 +1,7 @@
 #pragma once
-// Read-only Modbus discovery (RTU and ASCII framing) for a device with an unknown register map.
-// Only sends functions 01-04 (read coils / discrete inputs / holding / input registers), never writes.
+// Modbus discovery (RTU and ASCII framing) for a device with an unknown register map.
+// Discovery only sends functions 01-04 (reads). The one exception is start_write(): a single-register
+// write (FC06), refused unless writes_enabled is set and write_allowed() accepts the register and value.
 // Non-blocking: tick() is called from an ESPHome interval and runs one step of a state machine.
 //
 // Jobs:
@@ -8,7 +9,8 @@
 //   scan all    same, trying common baud / frame format / RTU-ASCII combinations until something answers
 //   dump        read a register range with the selected functions and log every readable value
 //   watch       repeat the dump and log only values that change
-// While idle it listens and logs any unsolicited traffic (is something else a master on this bus?).
+// Between jobs it polls the registers added with add_poll() (for Home Assistant sensors), one register per
+// request, and otherwise listens and logs any unsolicited traffic (is something else a master on this bus?).
 
 #include <algorithm>
 #include <cstdio>
@@ -146,6 +148,35 @@ class Discovery {
 
   std::string status{"idle"};
 
+  // Periodic polling of known registers (FC03, one per request) while no discovery job runs.
+  // The callback gets ok = false when the register could not be read.
+  using PollCallback = std::function<void(bool ok, uint16_t raw)>;
+  uint32_t poll_interval_ms{30000};
+  void add_poll(uint16_t reg, PollCallback cb) { this->polls_.push_back({reg, std::move(cb)}); }
+
+  // Guarded single-register write. Both must allow it; by default nothing is allowed.
+  bool writes_enabled{false};
+  std::function<bool(uint16_t reg, uint16_t value)> write_allowed = [](uint16_t, uint16_t) { return false; };
+
+  // Writes one register with FC06, then reads it back with FC03. Returns false when refused.
+  bool start_write(uint16_t reg, uint16_t value) {
+    char s[96];
+    if (!this->writes_enabled || !this->write_allowed(reg, value)) {
+      snprintf(s, sizeof(s), "write refused: register %u = %u (%s)", reg, value,
+               this->writes_enabled ? "not in allowlist" : "writes disabled");
+      this->status = s;
+      ESP_LOGW(TAG, "%s", s);
+      return false;
+    }
+    this->stop_job_();
+    this->job_ = WRITE;
+    this->write_reg_ = reg;
+    this->write_value_ = value;
+    this->write_step_ = 0;
+    ESP_LOGI(TAG, "Write: slave %u register %u = %u (FC06), then read back", this->slave, reg, value);
+    return true;
+  }
+
   const Serial &serial() const { return this->serial_; }
   void set_serial(const Serial &s) {
     if (s == this->serial_) return;
@@ -153,7 +184,7 @@ class Discovery {
     this->serial_dirty_ = true;
   }
 
-  bool busy() const { return this->job_ != NONE; }
+  bool busy() const { return this->job_ == SCAN || this->job_ == DUMP || this->job_ == WRITE; }
   bool watching() const { return this->job_ == DUMP && this->watch_; }
 
   void start_scan(bool all) {
@@ -201,7 +232,7 @@ class Discovery {
   }
 
   void stop() {
-    if (this->job_ == NONE) return;
+    if (!this->busy()) return;
     this->stop_job_();
     this->status = "stopped";
     ESP_LOGI(TAG, "Stopped");
@@ -216,13 +247,21 @@ class Discovery {
     }
     if (this->serial_dirty_) this->apply_serial_();
     if (this->job_ == NONE) {
-      this->listen_(now);
-      return;
+      if (this->polls_.empty() || (int32_t) (now - this->next_poll_) < 0) {
+        this->listen_(now);
+        return;
+      }
+      this->job_ = POLL;
+      this->poll_idx_ = 0;
     }
     if ((int32_t) (now - this->next_send_) < 0) return;
 
     Req r;
-    switch (this->job_ == SCAN ? this->next_scan_(r) : this->next_dump_(r)) {
+    Next next = this->job_ == SCAN    ? this->next_scan_(r)
+                : this->job_ == DUMP  ? this->next_dump_(r)
+                : this->job_ == WRITE ? this->next_write_(r)
+                                      : this->next_poll_req_(r);
+    switch (next) {
       case SEND:
         this->send_(r);
         break;
@@ -235,7 +274,7 @@ class Discovery {
   }
 
  protected:
-  enum Job { NONE, SCAN, DUMP };
+  enum Job { NONE, SCAN, DUMP, POLL, WRITE };
   enum Phase { IDLE, WAIT };
   enum Result { OK, EXCEPTION, TIMEOUT, BAD };
   enum Next { SEND, LATER, DONE };
@@ -273,6 +312,24 @@ class Discovery {
   uint32_t pass_{0};
   int readable_{0}, changes_{0}, timeouts_{0};
   std::map<uint32_t, uint16_t> values_;  // key: fc << 16 | register
+  std::map<uint8_t, int> exceptions_;    // exception code -> count, per pass
+  // Watch passes after the baseline only read the registers that answered, grouped into runs.
+  std::vector<Req> runs_;
+  size_t run_idx_{0};
+
+  // Write.
+  uint16_t write_reg_{0}, write_value_{0};
+  int write_step_{0};
+  const char *write_why_{nullptr};  // refusal reason of the FC06 step, nullptr when accepted
+
+  // Polling.
+  struct Poll {
+    uint16_t reg;
+    PollCallback cb;
+  };
+  std::vector<Poll> polls_;
+  size_t poll_idx_{0};
+  uint32_t next_poll_{0};
 
   // Idle listening.
   std::vector<uint8_t> idle_buf_;
@@ -301,8 +358,9 @@ class Discovery {
   size_t data_len_() const {
     return this->cur_.fc <= 2 ? (this->cur_.cnt + 7) / 8 : this->cur_.cnt * 2;
   }
-  // Reply length in characters on the wire.
+  // Reply length in characters on the wire. FC06 replies echo the request (address, function, register, value).
   size_t expected_chars_() const {
+    if (this->cur_.fc == 6) return this->serial_.ascii ? 1 + 2 * 7 + 2 : 8;
     return this->serial_.ascii ? 1 + 2 * (3 + this->data_len_() + 1) + 2 : 5 + this->data_len_();
   }
 
@@ -350,14 +408,16 @@ class Discovery {
 
   // RTU: finishes on a complete frame or on silence after a partial one. Returns true when finished.
   bool poll_rtu_(uint32_t now) {
-    // Drop our own request if the transceiver echoes it.
-    if (this->buf_.size() >= this->req_.size() &&
+    // Drop our own request if the transceiver echoes it (not for FC06, whose reply equals the request).
+    if (this->cur_.fc != 6 && this->buf_.size() >= this->req_.size() &&
         std::equal(this->req_.begin(), this->req_.end(), this->buf_.begin()))
       this->buf_.erase(this->buf_.begin(), this->buf_.begin() + this->req_.size());
 
     size_t need = 0;
     if (this->buf_.size() >= 2 && this->buf_[1] == (this->cur_.fc | 0x80)) {
       need = 5;
+    } else if (this->buf_.size() >= 2 && this->cur_.fc == 6 && this->buf_[1] == 6) {
+      need = 8;
     } else if (this->buf_.size() >= 3 && this->buf_[1] == this->cur_.fc) {
       need = 5 + this->buf_[2];
     }
@@ -391,7 +451,7 @@ class Discovery {
       auto lf = std::find(colon, this->buf_.end(), (uint8_t) '\n');
       if (lf == this->buf_.end()) return false;
       std::vector<uint8_t> line(colon, lf + 1);
-      if (line == this->req_) {  // echo of our request
+      if (line == this->req_ && this->cur_.fc != 6) {  // echo of our request
         this->buf_.erase(this->buf_.begin(), lf + 1);
         continue;
       }
@@ -425,6 +485,10 @@ class Discovery {
       this->finish_(BAD, frame);
     } else if (frame[1] == (this->cur_.fc | 0x80)) {
       this->finish_(EXCEPTION, frame);
+    } else if (this->cur_.fc == 6) {
+      bool echo = frame.size() == 6 + trailer && frame[1] == 6 && ((frame[2] << 8) | frame[3]) == this->cur_.reg &&
+                  ((frame[4] << 8) | frame[5]) == this->cur_.cnt;
+      this->finish_(echo ? OK : BAD, frame);
     } else if (frame[1] == this->cur_.fc && frame[2] == this->data_len_() &&
                frame.size() == 3 + this->data_len_() + trailer) {
       this->finish_(OK, frame);
@@ -441,7 +505,70 @@ class Discovery {
       this->scan_result_(res);
     } else if (this->job_ == DUMP) {
       this->dump_result_(res);
+    } else if (this->job_ == WRITE) {
+      this->write_result_(res);
+    } else if (this->job_ == POLL) {
+      const Poll &p = this->polls_[this->poll_idx_++];
+      if (res == OK) {
+        p.cb(true, (this->frame_[3] << 8) | this->frame_[4]);
+      } else {
+        ESP_LOGW(TAG, "Poll register %u failed (%s)", p.reg,
+                 res == EXCEPTION ? exception_name(this->frame_[2]) : res == TIMEOUT ? "timeout" : "invalid reply");
+        p.cb(false, 0);
+      }
     }
+  }
+
+  Next next_write_(Req &r) {
+    if (this->write_step_ == 0) {
+      r = {this->slave, 6, this->write_reg_, this->write_value_};  // cnt carries the value for FC06
+    } else if (this->write_step_ == 1) {
+      r = {this->slave, 3, this->write_reg_, 1};
+    } else {
+      this->next_poll_ = now_ms();  // refresh the sensors right away
+      return DONE;
+    }
+    return SEND;
+  }
+
+  void write_result_(Result res) {
+    const std::vector<uint8_t> &f = this->frame_;
+    const char *why = res == EXCEPTION ? exception_name(f[2]) : res == TIMEOUT ? "timeout" : "invalid reply";
+    if (this->write_step_ == 0) {
+      this->write_why_ = res == OK ? nullptr : why;
+      if (res == OK) {
+        ESP_LOGI(TAG, "Write register %u = %u: accepted", this->write_reg_, this->write_value_);
+      } else {
+        ESP_LOGW(TAG, "Write register %u = %u: refused (%s) %s", this->write_reg_, this->write_value_, why,
+                 this->raw_(f).c_str());
+      }
+    } else if (this->write_step_ == 1) {
+      char back[32];
+      if (res == OK) {
+        uint16_t v = (f[3] << 8) | f[4];
+        snprintf(back, sizeof(back), "read back %u", v);
+        ESP_LOGI(TAG, "Read back register %u = %u (%s)", this->write_reg_, v,
+                 v == this->write_value_ ? "as written" : "differs");
+      } else {
+        snprintf(back, sizeof(back), "read back failed");
+        ESP_LOGW(TAG, "Read back register %u failed (%s)", this->write_reg_, why);
+      }
+      char s[96];
+      snprintf(s, sizeof(s), "write register %u = %u: %s%s, %s", this->write_reg_, this->write_value_,
+               this->write_why_ == nullptr ? "accepted" : "refused: ", this->write_why_ == nullptr ? "" : this->write_why_,
+               back);
+      this->status = s;
+    }
+    this->write_step_++;
+  }
+
+  Next next_poll_req_(Req &r) {
+    if (this->poll_idx_ >= this->polls_.size()) {
+      this->next_poll_ = now_ms() + this->poll_interval_ms;
+      return DONE;
+    }
+    r = {this->slave, 3, this->polls_[this->poll_idx_].reg, 1};
+    return SEND;
   }
 
   // Raw reply for the log: hex, plus the text for ASCII.
@@ -538,22 +665,49 @@ class Discovery {
     this->readable_ = 0;
     this->changes_ = 0;
     this->timeouts_ = 0;
+    this->exceptions_.clear();
+    this->run_idx_ = 0;
+  }
+
+  bool cached_pass_() const { return this->watch_ && this->pass_ > 0; }
+
+  // Groups the registers that answered in the baseline into contiguous runs of at most BLOCK.
+  void build_runs_() {
+    this->runs_.clear();
+    for (const auto &kv : this->values_) {
+      uint8_t fc = kv.first >> 16;
+      uint16_t reg = kv.first & 0xFFFF;
+      if (!this->runs_.empty()) {
+        Req &last = this->runs_.back();
+        if (last.fc == fc && last.reg + last.cnt == reg && last.cnt < BLOCK) {
+          last.cnt++;
+          continue;
+        }
+      }
+      this->runs_.push_back({0, fc, reg, 1});
+    }
+    ESP_LOGI(TAG, "Watch: next passes read only the %u answering registers in %u requests",
+             (unsigned) this->values_.size(), (unsigned) this->runs_.size());
   }
 
   Next next_dump_(Req &r) {
     uint32_t end = (uint32_t) this->start + this->count;
+    if (this->cached_pass_()) {
+      if (this->run_idx_ >= this->runs_.size()) return this->next_pass_();
+      r = this->runs_[this->run_idx_];
+      r.addr = this->slave;
+      this->cur_single_ = false;
+      char s[96];
+      snprintf(s, sizeof(s), "watch pass %u: FC%02u register %u (%u registers), %d changes", this->pass_ + 1, r.fc,
+               r.reg, (unsigned) this->values_.size(), this->changes_);
+      this->status = s;
+      return SEND;
+    }
     if (this->singles_.empty() && this->reg_ >= end) {
       this->fn_idx_++;
       this->reg_ = this->start;
     }
-    if (this->fn_idx_ >= this->functions.size()) {
-      this->end_pass_();
-      if (!this->watch_) return DONE;
-      this->pass_++;
-      this->begin_pass_();
-      this->next_send_ = now_ms() + this->watch_pause_ms;
-      return LATER;
-    }
+    if (this->fn_idx_ >= this->functions.size()) return this->next_pass_();
     uint8_t fc = this->functions[this->fn_idx_];
     this->cur_single_ = !this->singles_.empty();
     if (this->cur_single_) {
@@ -569,10 +723,36 @@ class Discovery {
     return SEND;
   }
 
+  Next next_pass_() {
+    this->end_pass_();
+    if (!this->watch_) return DONE;
+    if (this->pass_ == 0) this->build_runs_();
+    this->pass_++;
+    this->begin_pass_();
+    this->next_send_ = now_ms() + this->watch_pause_ms;
+    return LATER;
+  }
+
   void dump_result_(Result res) {
     const std::vector<uint8_t> &f = this->frame_;
     if (res == TIMEOUT) this->timeouts_++;
-    if (this->cur_single_) {
+    // Count exception codes once per register (a failed block is retried per register, count those).
+    if (res == EXCEPTION && this->cur_.cnt == 1) this->exceptions_[f[2]]++;
+    if (this->cached_pass_()) {
+      // Some slaves refuse multi-register reads across internal table boundaries even when every
+      // register answers on its own: split a refused run into single registers for good.
+      if (res != OK && this->cur_.cnt > 1) {
+        ESP_LOGI(TAG, "Watch: registers %u-%u refused as one read (%s), reading them one by one", this->cur_.reg,
+                 this->cur_.reg + this->cur_.cnt - 1,
+                 res == EXCEPTION ? exception_name(f[2]) : res == TIMEOUT ? "timeout" : "invalid reply");
+        Req run = this->runs_[this->run_idx_];
+        this->runs_.erase(this->runs_.begin() + this->run_idx_);
+        for (uint16_t i = 0; i < run.cnt; i++)
+          this->runs_.insert(this->runs_.begin() + this->run_idx_ + i, Req{0, run.fc, (uint16_t) (run.reg + i), 1});
+        return;
+      }
+      this->run_idx_++;
+    } else if (this->cur_single_) {
       this->singles_.erase(this->singles_.begin());
     } else {
       this->reg_ += this->cur_.cnt;
@@ -621,6 +801,8 @@ class Discovery {
       snprintf(s, sizeof(s), "%s: %d readable, %d timeouts", this->watch_ ? "watch baseline" : "dump done",
                this->readable_, this->timeouts_);
       ESP_LOGI(TAG, "%s", s);
+      for (const auto &e : this->exceptions_)
+        ESP_LOGI(TAG, "  exception %u (%s): %d register(s)", e.first, exception_name(e.first), e.second);
     } else {
       snprintf(s, sizeof(s), "watch pass %u: %d readable, %d changes", this->pass_ + 1, this->readable_,
                this->changes_);

@@ -33,6 +33,41 @@ esphome:
               a.perform();
             };
         - script.execute: sync_settings
+        # Read-only fancoil sensors: polled every 30 s, one register per request (see README "Registers").
+        - lambda: |-
+            auto temp = [](sensor::Sensor *s) {
+              return [s](bool ok, uint16_t raw) { s->publish_state(ok ? (int16_t) raw / 10.0f : NAN); };
+            };
+            disc.add_poll(0, temp(id(room_temperature)));
+            disc.add_poll(8, temp(id(setpoint)));
+            disc.add_poll(5, temp(id(temp_reg5)));
+            disc.add_poll(6, temp(id(temp_reg6)));
+            disc.add_poll(13, temp(id(temp_reg13)));
+            disc.add_poll(14, temp(id(temp_reg14)));
+            disc.add_poll(201, [](bool ok, uint16_t raw) {
+              static const char *const modes[] = {"auto", "min", "night", "max"};
+              id(fan_mode).publish_state(ok ? modes[raw & 0x03] : "unknown");
+              if (ok) id(power).publish_state((raw & 0x80) == 0);
+            });
+            disc.add_poll(233, [](bool ok, uint16_t raw) {
+              id(operating_mode).publish_state(!ok ? "unknown" : raw == 3 ? "heating" : raw == 5 ? "cooling"
+                                               : "unknown (" + to_string(raw) + ")");
+            });
+            disc.add_poll(104, [](bool ok, uint16_t raw) { id(status_104).publish_state(ok ? raw : NAN); });
+        # Write allowlist: only mapped registers whose effect can be undone on the panel. Writes also
+        # need the "Writes Enabled" switch, which is off after every boot.
+        - lambda: |-
+            disc.write_allowed = [](uint16_t reg, uint16_t value) {
+              switch (reg) {
+                case 8:
+                case 231:
+                  return value >= 160 && value <= 280;  // setpoint 16.0-28.0 degC
+                case 201:
+                  return value <= 3 || value == 128;  // fan mode auto/min/night/max, or off
+                default:
+                  return false;
+              }
+            };
   includes:
     - modbus_discovery.h
 
@@ -208,6 +243,28 @@ number:
     mode: box
     on_value:
       - script.execute: sync_settings
+  - platform: template
+    id: num_write_reg
+    name: "Write Register"
+    icon: mdi:pencil
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 65535
+    step: 1
+    initial_value: 8
+    mode: box
+  - platform: template
+    id: num_write_value
+    name: "Write Value"
+    icon: mdi:pencil
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 65535
+    step: 1
+    initial_value: 180
+    mode: box
 
 button:
   - platform: restart
@@ -228,12 +285,28 @@ button:
     on_press:
       - lambda: disc.start_dump(false);
   - platform: template
+    name: "Write Register Value"
+    icon: mdi:content-save-edit
+    entity_category: config
+    on_press:
+      - lambda: disc.start_write((uint16_t) id(num_write_reg).state, (uint16_t) id(num_write_value).state);
+  - platform: template
     name: "Stop Discovery"
     icon: mdi:stop
     on_press:
       - lambda: disc.stop();
 
 switch:
+  - platform: template
+    name: "Writes Enabled"
+    icon: mdi:pencil-lock
+    entity_category: config
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: disc.writes_enabled = true;
+    turn_off_action:
+      - lambda: disc.writes_enabled = false;
   - platform: template
     name: "Watch Registers"
     icon: mdi:eye
@@ -244,6 +317,14 @@ switch:
       - lambda: disc.stop();
 
 text_sensor:
+  - platform: template
+    id: fan_mode
+    name: "Fan Mode"
+    icon: mdi:fan
+  - platform: template
+    id: operating_mode
+    name: "Operating Mode"
+    icon: mdi:sun-snowflake-variant
   - platform: template
     name: "Discovery Status"
     icon: mdi:information-outline
@@ -272,7 +353,69 @@ interval:
     then:
       - lambda: disc.tick();
 
+binary_sensor:
+  - platform: template
+    id: power
+    name: "Power"
+    device_class: power
+
+# Fancoil values, published by the polls registered in on_boot. Registers 5/6/13/14 are probably
+# water temperatures (not confirmed yet), logged here to find out which is which.
 sensor:
+  - platform: template
+    id: room_temperature
+    name: "Room Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+  - platform: template
+    id: setpoint
+    name: "Setpoint"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 1
+    update_interval: never
+  - platform: template
+    id: temp_reg5
+    name: "Temperature Reg 5"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+  - platform: template
+    id: temp_reg6
+    name: "Temperature Reg 6"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+  - platform: template
+    id: temp_reg13
+    name: "Temperature Reg 13"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+  - platform: template
+    id: temp_reg14
+    name: "Temperature Reg 14"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+  - platform: template
+    id: status_104
+    name: "Status Register 104"
+    icon: mdi:list-status
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: never
   - platform: wifi_signal
     name: "WiFi Signal"
   - platform: uptime
