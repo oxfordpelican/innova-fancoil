@@ -265,6 +265,38 @@ issue or PR.
 - The board also has **10V-DC +/− pads**, a possible supply for the LilyGo. Measure them under load
   before using them.
 
+### Control board and spares
+
+The control board is made by **LAE Electronic** (Oderzo, Italy) for Innova. The label reads
+`LAE · INN-FR-B32 · N540022C rev… · Wxxyy`. Wxxyy is most likely the production week and year
+(W4422 on the tested board). It is built around an STM8S105 with an ST485 transceiver.
+
+- **Firmware** is Innova's own, not generic LAE firmware: "INN-FR-B32" on the label is most likely
+  the Innova firmware/product code. The register map is Innova-specific (fan modes, water
+  thresholds, setpoint limits). The **+5V / SW / GND / RST** pads next to the STM8 are its SWIM
+  programming port; the firmware is most likely read-protected.
+- **Innova spare part code: ESE645II**, for all AirLeaf SL/SLI sizes. The shops' wiring drawing
+  shows rev **N540022B** with the same layout (H4, H2, AIR, COMM, GRID, CP, "+ A B −", ASCII/RTU
+  jumper). Some sources name **ESE745II** for newer SL models with the M7 wall control; quote both
+  codes and N540022C when ordering.
+- **Where to buy** (prices seen 2026-10-13):
+  - Innova dealer or installer (NL: no shop found that lists it online).
+  - Italian shops: [Idrocrimart](https://www.idrocrimart.it/innova-scheda-elettronica-ese645ii-incasso/)
+    €130.50, [Promoclima](https://www.promoclima.it/ventilconvettore-fan-coil-innova-airleaf-sl200c-dc-inverter-bianco-6845.html)
+    €125.
+  - **eBay:** a new board listed on ebay.co.uk as "Lae W3924 PCB" for £38.20. Its label is the same,
+    `INN-FR-B32 / N540022C` (W3924, 2024), so it is the same board, possibly with newer firmware.
+    It's cheap enough to use as a bench test board or a spare.
+  - LAE has no webshop. It sells its own controllers through distributors, but this board is made
+    to order for Innova and goes through Innova's spare-parts channel only.
+- **Search terms** (ebay.it has the most Innova parts; also ebay.de, ebay.co.uk, Subito.it and
+  Marktplaats): `N540022C`, `N540022B`, `N540022`, `ESE645II`, `ESE745II`, `INN-FR-B32` /
+  `INN FR B32`, `LAE W3924`, `LAE scheda`, `Innova scheda elettronica`, `Innova Airleaf scheda`,
+  `Airleaf PCB`. Check the label photo for N540022C before buying.
+- **Before swapping boards:** note the DIP switch positions (A B / C D) and the ASCII/RTU jumper,
+  and compare a full register dump of both boards (fan speed table 210–215, water thresholds 218/219)
+  to catch firmware or size differences.
+
 ## Setup
 
 ```bash
