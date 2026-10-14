@@ -79,7 +79,7 @@ RST` is the STM8 programming (SWIM) port, not a bus.
 | 201 | fan mode and on/off, bit field, **writable** with FC06 (panel follows at once) | bits 0–1: 0 auto, 1 min, 2 night, 3 max; bit 7: 1 = off (tested 0 → 1 → 0 → 128 → 0) |
 | 700, 701, 707 | bits 0, 1 and 7 of reg 201 as separate 0/1 registers | |
 | 233 | operating mode | 3 heating, 5 cooling |
-| 104 | status bit field | 0x0010 on, 0x0800 off; bits 0 and 9 also set in cooling (with warm water) |
+| 104 | status bit field | bit 4 (0x0010): **water too cold for heating**: cleared when reg 1 rises to the heating minimum (reg 218), set again about 1 °C below it (seen 2026-10-14 with 218 = 25.0: cleared at 25.0, set at 23.9–24.1). Bit 11 (0x0800): off. Bits 0 and 9 also set in cooling (with warm water) |
 | 9, 21, 105 | status, only non-zero in cooling (with warm water); reg 9 counted 1 → 5 → 0 | |
 
 Note: Innova's WiFi API numbers the fan function 1–4 (auto, night, min, max); Modbus reg 201 uses
@@ -89,7 +89,7 @@ Note: Innova's WiFi API numbers the fan function 1–4 (auto, night, min, max); 
 
 | Reg | Value at test | Guess |
 |---:|---:|---|
-| 218, 219 | 300, 200 | fan cut-off water temperatures, ×0.1 °C: 218 = heating minimum (30.0 °C, the factory default), 219 = cooling maximum (20.0 °C). 218 is **writable** with FC06 and kept over a power cycle (EEPROM): set to 250 on 2026-10-13. Not yet seen to change when the fan starts |
+| 218, 219 | 300, 200 | water cut-off temperatures, ×0.1 °C: **218 = heating minimum** (factory 30.0 °C), 219 = cooling maximum (20.0 °C, probable). 218 is writable with FC06 and kept over a power cycle (EEPROM). Set to 250 on 2026-10-13; overnight, the water-too-cold bit in reg 104 then switched at 25.0 °C, so 218 is the threshold in use. The fan itself has not yet been seen to run (no heat demand) |
 | 2, 7, 16 | −510, −1020, 1023 | missing probe (H4, the 4-pipe water probe, is not fitted): 16 is its 10-bit ADC at full scale (open circuit), like 13/14 for the fitted probes |
 | 3, 4 | 9–13, 11 | ? (reg 3 changes slowly) |
 | 196–277 | see dump | configuration parameters: 202/203 = 160/280 (setpoint limits 16–28 °C?), 210–215 = 400…1700 (fan speeds in rpm?), several water-temperature thresholds of 20–50 °C (218 = 30.0, 219 = 20.0, 260 = 45.0, …) |
@@ -328,7 +328,7 @@ Polled every 30 s, one register per request:
 | Power | 201 bit 7 | on / off |
 | Operating Mode | 233 | heating / cooling |
 | Water Temperature | 1 | °C (coil probe; confirm once more during a space-heating run) |
-| Min Water Temp Heating | 218 | °C (probable; diagnostic) |
+| Min Water Temp Heating | 218 | °C (diagnostic) |
 | Max Water Temp Cooling | 219 | °C (probable; diagnostic) |
 | Status Register 104 | 104 | raw status bits (diagnostic) |
 
@@ -395,7 +395,8 @@ traffic, which would mean another master is on the bus.
       runs a low supply temperature (24–30 °C).
 - [x] Write the setpoint: reg 231 works, reg 8 is read-only.
 - [x] Write fan mode and on/off (reg 201).
-- [ ] Write the heating minimum water temperature (reg 218) and check the fan starts on 25 °C water.
+- [x] Write the heating minimum water temperature (reg 218): 25.0 °C is used by the board (reg 104 bit 4).
+- [ ] See the fan actually run on 25–30 °C water (needs heat demand: setpoint above room temperature).
 - [ ] Optional: a DS18B20 on the water inlet pipe (free pins IO25/32/33, 4.7 kΩ pull-up to 3.3 V)
       as an independent water-temperature reference.
 - [ ] Home Assistant controls for setpoint (231), fan mode and on/off (201) instead of the write
