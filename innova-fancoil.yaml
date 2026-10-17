@@ -52,7 +52,18 @@ esphome:
               id(operating_mode).publish_state(!ok ? "unknown" : raw == 3 ? "heating" : raw == 5 ? "cooling"
                                                : "unknown (" + to_string(raw) + ")");
             });
-            disc.add_poll(104, [](bool ok, uint16_t raw) { id(status_104).publish_state(ok ? raw : NAN); });
+            disc.add_poll(104, [](bool ok, uint16_t raw) {
+              id(status_104).publish_state(ok ? raw : NAN);
+              if (ok) id(heating_demand).publish_state(raw & 0x0002);
+              if (ok) id(water_too_cold).publish_state(raw & 0x0010);
+            });
+            auto raw = [](sensor::Sensor *s) {
+              return [s](bool ok, uint16_t raw) { s->publish_state(ok ? raw : NAN); };
+            };
+            disc.add_poll(15, raw(id(fan_speed)));
+            disc.add_poll(17, raw(id(fan_speed_17)));
+            disc.add_poll(3, raw(id(status_3)));
+            disc.add_poll(9, raw(id(status_9)));
         # Write allowlist: only mapped registers, in ranges that are safe to set back. Writes also
         # need the "Writes Enabled" switch, which is off after every boot.
         - lambda: |-
@@ -361,6 +372,15 @@ binary_sensor:
     id: power
     name: "Power"
     device_class: power
+  # Reg 104 bits: 1 = heating demand (fan running), 4 = water below the heating minimum (reg 218).
+  - platform: template
+    id: heating_demand
+    name: "Heating Demand"
+    device_class: heat
+  - platform: template
+    id: water_too_cold
+    name: "Water Too Cold"
+    icon: mdi:water-thermometer-outline
 
 # Fancoil values, published by the polls registered in on_boot.
 sensor:
@@ -407,6 +427,38 @@ sensor:
   - platform: template
     id: status_104
     name: "Status Register 104"
+    icon: mdi:list-status
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: never
+  # Fan speed: 0 = off, modulates from 400 (= parameter 210, the lowest of the rpm table 210-215) upwards.
+  - platform: template
+    id: fan_speed
+    name: "Fan Speed"
+    icon: mdi:fan
+    unit_of_measurement: "rpm"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  # Always reg 15 / 5; reg 9 is 0 when the fan is off, reg 3 changes while it runs (meaning unknown).
+  - platform: template
+    id: fan_speed_17
+    name: "Fan Speed Register 17"
+    icon: mdi:fan
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: status_3
+    name: "Status Register 3"
+    icon: mdi:list-status
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: status_9
+    name: "Status Register 9"
     icon: mdi:list-status
     entity_category: diagnostic
     accuracy_decimals: 0
