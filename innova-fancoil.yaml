@@ -429,6 +429,7 @@ sensor:
     name: "Status Register 104"
     icon: mdi:list-status
     entity_category: diagnostic
+    state_class: measurement
     accuracy_decimals: 0
     update_interval: never
   # Fan speed: 0 = off, modulates from 400 (= parameter 210, the lowest of the rpm table 210-215) upwards.
@@ -454,6 +455,7 @@ sensor:
     name: "Status Register 3"
     icon: mdi:list-status
     entity_category: diagnostic
+    state_class: measurement
     accuracy_decimals: 0
     update_interval: never
   - platform: template
@@ -461,6 +463,7 @@ sensor:
     name: "Status Register 9"
     icon: mdi:list-status
     entity_category: diagnostic
+    state_class: measurement
     accuracy_decimals: 0
     update_interval: never
   - platform: wifi_signal
