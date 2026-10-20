@@ -80,6 +80,8 @@ esphome:
                   return value >= 120 && value <= 250;  // probable cooling maximum water temp, 12.0-25.0 degC (default 20.0)
                 case 210:
                   return value >= 400 && value <= 550;  // lowest fan speed in the rpm table (test, default 400)
+                case 212:
+                  return value >= 400 && value <= 680;  // third fan speed, the cap in fan mode min (test, default 680)
                 default:
                   return false;
               }
