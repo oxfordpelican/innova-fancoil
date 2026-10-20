@@ -78,6 +78,8 @@ esphome:
                   return value >= 200 && value <= 350;  // probable heating minimum water temp, 20.0-35.0 degC (default 30.0)
                 case 219:
                   return value >= 120 && value <= 250;  // probable cooling maximum water temp, 12.0-25.0 degC (default 20.0)
+                case 210:
+                  return value >= 400 && value <= 550;  // lowest fan speed in the rpm table (test, default 400)
                 default:
                   return false;
               }
