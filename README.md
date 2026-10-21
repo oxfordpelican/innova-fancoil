@@ -31,23 +31,23 @@ probing and is **unofficial and incomplete**.
 | | |
 |---|---|
 | Port | 4-pin green terminal **"+ A B −"** on the control board (unused from the factory) |
-| Mode, jumper on **RTU** | **Modbus RTU, 9600 baud, 8N1** (recommended; ESPHome `modbus_controller` speaks RTU) |
-| Mode, jumper on **ASCII** (factory) | **Modbus ASCII, 9600 baud, 7E1** |
+| Mode, jumper fitted on **RTU** | **Modbus RTU, 9600 baud, 8N1** (recommended; ESPHome `modbus_controller` speaks RTU) |
+| Mode, no jumper (factory) | **Modbus ASCII, 9600 baud, 7E1** |
 | Slave address | **1** |
 | Functions | 03 and 04 both answer, with identical values |
 | Polarity | The fancoil's **B** idles high (+2.3 V to −), **A** low (+0.9 V). Innova uses the "B = D+" convention, so wire fancoil **B → transceiver A** and fancoil **A → transceiver B** for a Maxim-style transceiver like the one on the T-CAN485 |
 | GND | Fancoil **−** to the LilyGo's GND |
 | + | **12 V** supply (measured to −); powers the LilyGo: fancoil **+ → LilyGo power input +**, **− → GND** |
 
-The board's **ASCII / RTU jumper** (3-pin, next to the DIP switches) selects the Modbus framing. It
-comes in the **ASCII** position, where the board ignores all RTU frames, so an RTU-only scan finds
-nothing. Moving the cap to the two pins on the "RTU" side (fancoil switched off at the breaker)
-gives Modbus RTU at 9600 8N1, which ESPHome's `modbus_controller` speaks. Register values are the
+The board's **RTU jumper** (a 2-pin header marked "RTU", next to the DIP switches) selects the
+Modbus framing. It comes **empty** from the factory, which means **ASCII**: the board then ignores
+all RTU frames, so an RTU-only scan finds nothing. Putting a jumper cap on the two RTU pins
+(fancoil switched off at the breaker) gives Modbus RTU at 9600 8N1, which ESPHome's `modbus_controller` speaks. Register values are the
 same in both modes. The transceiver on the fancoil board is an ST485.
 
 ![Wiring diagram on the cover](docs/img/wiring-label.jpg)
 
-| Board | RS485 terminal | ASCII/RTU jumper and DIP switches |
+| Board | RS485 terminal | RTU jumper and DIP switches |
 |---|---|---|
 | ![Board](docs/img/board-overview.jpg) | ![RS485 terminal](docs/img/rs485-terminal.jpg) | ![Jumper and DIP switches](docs/img/dip-jumper.jpg) |
 
@@ -289,7 +289,7 @@ The control board is made by **LAE Electronic** (Oderzo, Italy) for Innova. The 
   thresholds, setpoint limits). The **+5V / SW / GND / RST** pads next to the STM8 are its SWIM
   programming port; the firmware is most likely read-protected.
 - **Innova spare part code: ESE645II**, for all AirLeaf SL/SLI sizes. The shops' wiring drawing
-  shows rev **N540022B** with the same layout (H4, H2, AIR, COMM, GRID, CP, "+ A B −", ASCII/RTU
+  shows rev **N540022B** with the same layout (H4, H2, AIR, COMM, GRID, CP, "+ A B −", RTU
   jumper). Some sources name **ESE745II** for newer SL models with the M7 wall control; quote both
   codes and N540022C when ordering.
 - **Where to buy** (prices seen 2026-10-13):
@@ -306,7 +306,7 @@ The control board is made by **LAE Electronic** (Oderzo, Italy) for Innova. The 
   Marktplaats): `N540022C`, `N540022B`, `N540022`, `ESE645II`, `ESE745II`, `INN-FR-B32` /
   `INN FR B32`, `LAE W3924`, `LAE scheda`, `Innova scheda elettronica`, `Innova Airleaf scheda`,
   `Airleaf PCB`. Check the label photo for N540022C before buying.
-- **Before swapping boards:** note the DIP switch positions (A B / C D) and the ASCII/RTU jumper,
+- **Before swapping boards:** note the DIP switch positions (A B / C D) and the RTU jumper,
   and compare a full register dump of both boards (fan speed table 210–215, water thresholds 218/219)
   to catch firmware or size differences.
 
