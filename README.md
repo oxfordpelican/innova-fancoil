@@ -1,7 +1,7 @@
 # innova-fancoil
 
 ESPHome firmware for reading, and carefully writing, an **Innova AirLeaf SL** fancoil (tested on
-an SL600, control board N540022C) over its RS485 port with a
+an SL600, control board N540022C, Innova spare part ESE645II) over its RS485 port with a
 [LilyGo T-CAN485](https://github.com/Xinyuan-LilyGO/T-CAN485) ESP32 board, plus a **Modbus
 discovery tool** for devices with an unknown register map.
 
