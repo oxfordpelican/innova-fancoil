@@ -1,0 +1,98 @@
+# Home Assistant dashboard for the Innova fancoil (ESPHome device name "innova-fancoil").
+# Add a dashboard (Settings → Dashboards → Add dashboard → New dashboard from scratch), open it,
+# ⋮ → Edit dashboard → ⋮ → Raw configuration editor, and paste this file.
+title: Fancoil
+views:
+- title: Fancoil
+  path: fancoil
+  icon: mdi:hvac
+  cards:
+  - type: glance
+    title: Innova AirLeaf
+    columns: 4
+    entities:
+    - entity: sensor.innova_fancoil_room_temperature
+      name: Room
+    - entity: sensor.innova_fancoil_water_temperature
+      name: Water
+    - entity: sensor.innova_fancoil_setpoint
+      name: Setpoint
+    - entity: binary_sensor.innova_fancoil_power
+      name: Power
+    - entity: sensor.innova_fancoil_fan_speed
+      name: Fan speed
+    - entity: binary_sensor.innova_fancoil_heating_demand
+      name: Demand
+    - entity: sensor.innova_fancoil_fan_mode
+      name: Fan
+    - entity: sensor.innova_fancoil_operating_mode
+      name: Mode
+  - type: history-graph
+    title: Room vs setpoint
+    hours_to_show: 24
+    entities:
+    - entity: sensor.innova_fancoil_room_temperature
+      name: Room
+    - entity: sensor.innova_fancoil_setpoint
+      name: Setpoint
+  - type: history-graph
+    title: Fan speed, demand, power and mode
+    hours_to_show: 24
+    entities:
+    - entity: sensor.innova_fancoil_fan_speed
+      name: Fan speed
+    - entity: binary_sensor.innova_fancoil_heating_demand
+      name: Heating demand
+    - entity: binary_sensor.innova_fancoil_water_too_cold
+      name: Water too cold
+    - entity: binary_sensor.innova_fancoil_power
+      name: Power
+    - entity: sensor.innova_fancoil_fan_mode
+      name: Fan
+    - entity: sensor.innova_fancoil_operating_mode
+      name: Mode
+  - type: history-graph
+    title: 'Water: fancoil coil vs heat pump'
+    hours_to_show: 24
+    entities:
+    - entity: sensor.innova_fancoil_water_temperature
+      name: Fancoil water
+    - entity: sensor.innova_fancoil_min_water_temp_heating
+      name: Min water heating
+    # Heat pump lines (an LG heat pump here): replace with your own heat pump's entities, or delete them.
+    - entity: sensor.lg_heat_pump_control_water_supply_temp
+      name: HP supply
+    - entity: sensor.lg_heat_pump_control_water_return_temp
+      name: HP return
+    - entity: binary_sensor.lg_heat_pump_control_dhw_heating_state
+      name: HP DHW
+    - entity: binary_sensor.innova_fancoil_power
+      name: Fancoil power
+    - entity: sensor.innova_fancoil_fan_mode
+      name: Fan
+    - entity: binary_sensor.innova_fancoil_heating_demand
+      name: Heating demand
+  - type: entities
+    title: Diagnostics
+    state_color: true
+    entities:
+    - entity: sensor.innova_fancoil_min_water_temp_heating
+      name: Min water temp heating (reg 218)
+    - entity: sensor.innova_fancoil_max_water_temp_cooling
+      name: Max water temp cooling (reg 219)
+    - entity: sensor.innova_fancoil_status_register_104
+      name: Status register 104
+    - entity: sensor.innova_fancoil_fan_speed_register_17
+      name: Fan speed / 5 (reg 17)
+    - entity: sensor.innova_fancoil_status_register_3
+      name: Status register 3
+    - entity: sensor.innova_fancoil_status_register_9
+      name: Status register 9
+    - entity: sensor.innova_fancoil_discovery_status
+      name: Discovery status
+    - entity: switch.innova_fancoil_writes_enabled
+      name: Writes enabled
+    - entity: sensor.innova_fancoil_wifi_signal
+      name: WiFi
+    - entity: sensor.innova_fancoil_uptime
+      name: Uptime

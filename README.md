@@ -345,6 +345,14 @@ Polled every 30 s, one register per request:
 Polling pauses while a discovery job or a write runs; a dump or watch that covers the polled registers
 keeps the sensors updating with its own reads.
 
+### Dashboard
+
+[`home-assistant/dashboard.yaml`](home-assistant/dashboard.yaml) is a ready-made dashboard: a
+glance card with the live values, 24-hour history graphs (room vs setpoint; fan speed, demand and
+mode; fancoil water vs heat pump water) and a diagnostics card. Add a new dashboard in Home
+Assistant, open the **Raw configuration editor** and paste the file. The heat pump lines in the
+water graph are for an LG heat pump: replace them with your own heat pump's entities, or delete them.
+
 ### Write test (guarded)
 
 For testing which registers accept writes: **Write Register**, **Write Value** and the **Write
