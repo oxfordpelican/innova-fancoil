@@ -15,8 +15,8 @@ probing and is **unofficial and incomplete**.
 - **Confirmed writable** (FC06, tested with the panel): setpoint (reg 231), fan mode and on/off
   (reg 201), and the heating minimum water temperature (reg 218; kept over a power cycle, used by
   the board: the water-too-cold bit in reg 104 switches at its value). The fan speed table
-  (regs 210–215) accepts writes too: in fan mode min the fan ramps up to the value in reg 212, so
-  min plus reg 212 sets the fan speed. The fan speed itself (reg 15) is read-only.
+  (regs 210–215) accepts writes too: in fan mode min the fan ramps up to the value in reg 212,
+  in max up to reg 214, so min and max give two fan speeds of your choice. The fan speed itself (reg 15) is read-only.
 - **Writes** go only through a guarded write test (switch plus allowlist); there are no regular
   Home Assistant controls yet.
 - The rest of the configuration parameters (196–277) are not mapped yet.
@@ -97,7 +97,7 @@ Note: Innova's WiFi API numbers the fan function 1–4 (auto, night, min, max); 
 | 218, 219 | 300, 200 | water cut-off temperatures, ×0.1 °C: **218 = heating minimum** (factory 30.0 °C), 219 = cooling maximum (20.0 °C, probable). 218 is writable with FC06 and kept over a power cycle (EEPROM). Set to 250 on 2026-10-13; overnight, the water-too-cold bit in reg 104 then switched at 25.0 °C, so 218 is the threshold in use. |
 | 2, 7, 16 | −510, −1020, 1023 | missing probe (H4, the 4-pipe water probe, is not fitted): 16 is its 10-bit ADC at full scale (open circuit), like 13/14 for the fitted probes |
 | 3, 4 | 9–13, 11 | ? reg 3 is 9 when idle and switches between 1 and 9 every 15–60 s while the fan runs |
-| 196–277 | see dump | configuration parameters: 202/203 = 160/280 (setpoint limits 16–28 °C?), 210–215 = 400/550/680/1100/1500/1700 (fan speed table in rpm; 400 is the lowest speed seen in reg 15; 210 and 212 are writable with FC06. **Fan mode min ramps up to reg 212**: 400 → 680 in about 2.5 min, then 670–680; writing 212 = 550 with the fan at 667 brought it to 550 within 15 s, and it held 549–550 (2026-10-20). Setting 210 to 450 had no visible effect with the fan already at 680), several water-temperature thresholds of 20–50 °C (218 = 30.0, 219 = 20.0, 260 = 45.0, …) |
+| 196–277 | see dump | configuration parameters: 202/203 = 160/280 (setpoint limits 16–28 °C?), 210–215 = 400/550/680/1100/1500/1700 (fan speed table in rpm; 400 is the lowest speed seen in reg 15; 210 and 212 are writable with FC06. **Fan mode min ramps up to reg 212**: 400 → 680 in about 2.5 min, then 670–680; writing 212 = 550 with the fan at 667 brought it to 550 within 15 s, and it held 549–550 (2026-10-20). Setting 210 to 450 had no visible effect with the fan already at 680. **Fan mode max ramps up to reg 214** (not 215): 1349 → 1500 in about 1.5 min; writing 214 = 820 brought it to 820 within 15 s (2026-10-21). Fan mode night kept the fan at 0 rpm for 8 min despite the heating demand, on 28–29.6 °C water. All entries are writable), several water-temperature thresholds of 20–50 °C (218 = 30.0, 219 = 20.0, 260 = 45.0, …) |
 
 <details>
 <summary>Full FC03 dump of all 146 registers (register, signed value, hex), heating, fan on min, setpoint 18.5 °C</summary>
@@ -354,8 +354,8 @@ result shows in **Discovery Status** and the log. A write is only sent when:
 - the register and value are in the allowlist in `innova-fancoil.yaml`: setpoint 8 or 231 with
   160–280 (16.0–28.0 °C), fan mode/on-off 201 with 0–3 or 128 (off), heating minimum water
   temperature 218 with 200–350 (20.0–35.0 °C, default 300), cooling maximum water temperature
-  219 with 120–250 (12.0–25.0 °C, default 200), the lowest fan speed 210 with 400–550 rpm
-  (default 400), or the fan speed cap in mode min 212 with 400–680 rpm (default 680).
+  219 with 120–250 (12.0–25.0 °C, default 200), or the fan speed table 210–215 with 400 up to
+  the factory value (400/550/680/1100/1500/1700 rpm; lowering only).
 
 Everything else is refused before anything goes on the bus. 218 and 219 cannot be set on the
 panel: note the old value (300 / 200) and write it back over Modbus to undo. Write on change only,
@@ -405,8 +405,9 @@ traffic, which would mean another master is on the bus.
 - [x] Check the fan on 25–30 °C water, right at the lowered heating minimum: on 2026-10-20 the fan
       started by itself at 25.2 °C water (setpoint 18.5; the heating demand came on at room 17.8
       and cleared at 18.3).
-- [x] Set the fan speed ourselves: fan mode min (201 = 1) plus the cap in reg 212 (2026-10-20).
-- [ ] Find which table entry caps fan mode max (and night), for a second fixed speed.
+- [x] Set the fan speed ourselves: fan mode min (201 = 1) plus the cap in reg 212 (2026-10-20),
+      fan mode max (201 = 3) plus the cap in reg 214 (2026-10-21).
+- [ ] Find out why fan mode night keeps the fan off on 28–30 °C water.
 - [x] Write the setpoint: reg 231 works, reg 8 is read-only.
 - [x] Write fan mode and on/off (reg 201).
 - [x] Write the heating minimum water temperature (reg 218): 25.0 °C is used by the board (reg 104 bit 4).
