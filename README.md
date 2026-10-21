@@ -37,7 +37,7 @@ probing and is **unofficial and incomplete**.
 | Functions | 03 and 04 both answer, with identical values |
 | Polarity | The fancoil's **B** idles high (+2.3 V to −), **A** low (+0.9 V). Innova uses the "B = D+" convention, so wire fancoil **B → transceiver A** and fancoil **A → transceiver B** for a Maxim-style transceiver like the one on the T-CAN485 |
 | GND | Fancoil **−** to the LilyGo's GND |
-| + | Supply voltage, not measured yet; not connected (the LilyGo runs on USB-C) |
+| + | **12 V** supply (measured to −); powers the LilyGo: fancoil **+ → LilyGo power input +**, **− → GND** |
 
 The board's **ASCII / RTU jumper** (3-pin, next to the DIP switches) selects the Modbus framing. It
 comes in the **ASCII** position, where the board ignores all RTU frames, so an RTU-only scan finds
@@ -272,10 +272,11 @@ issue or PR.
 ## Hardware
 
 - **LilyGo T-CAN485** (ESP32 + RS485 transceiver; power input 5–12 V per LilyGo, or USB-C).
-- Short twisted pair from the fancoil's "+ A B −" terminal: **B → A**, **A → B**, **− → GND** (see
-  Polarity above). Two devices and a short cable, so no extra termination.
-- The board also has **10V-DC +/− pads**, a possible supply for the LilyGo. Measure them under load
-  before using them.
+- Short cable from the fancoil's "+ A B −" terminal: **B → A**, **A → B** (twisted pair; see
+  Polarity above), **+ → power input +** and **− → GND**. The "+" terminal gives 12 V, inside the
+  LilyGo's 5–12 V range, so the fancoil powers the LilyGo and no USB supply is needed. Two devices
+  and a short cable, so no extra termination.
+- The board also has **10V-DC +/− pads** (not measured, not used).
 
 ### Control board and spares
 
@@ -397,7 +398,7 @@ traffic, which would mean another master is on the bus.
 - [x] Confirm reg 1 during a space-heating run.
 - [x] Find the fan speed (reg 15) and heating demand (reg 104 bit 1).
 - [ ] Map the parameter block 196–277; find the valve state, if exposed; work out regs 3 and 9.
-- [ ] Measure the "+" terminal and the 10V-DC pads; maybe power the LilyGo from the fancoil.
+- [x] Power the LilyGo from the fancoil: the "+" terminal gives 12 V.
 - [ ] Replace the discovery tool with ESPHome's `modbus_controller` (RTU, 9600 8N1, slave 1), one
       register per read.
 - [x] Read-only sensors in Home Assistant: room temperature, water temperature, setpoint, fan mode,
